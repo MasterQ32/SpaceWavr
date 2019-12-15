@@ -99,7 +99,7 @@ void paint_line(int16_t x1, int16_t y1, int16_t x2, int16_t y2)
 
     move_cursor(x, y);
 
-    _delay_us(1);
+//     _delay_us(1);
   }
 
   move_cursor(x2, y2);
@@ -155,6 +155,84 @@ Vector2 direction_for_angle(uint8_t angle)
   return (Vector2) { dx, -dy };
 }
 
+static void paint_digit(int16_t x, int16_t y, unsigned char num)
+{
+  if(num > 0xF)
+    return;
+  static const uint8_t bitmasks[] = {
+    // o--0--o
+    // |     |
+    // 1     2
+    // |     |
+    // o--3--o
+    // |     |
+    // 4     5
+    // |     |
+    // o--6--o
+    0x77, // 0
+    0x24, // 1
+    0x5D, // 2
+    0x6D, // 3
+    0x2E, // 4
+    0x6B, // 5
+    0x7A, // 6
+    0x25, // 7
+    0x7F, // 8
+    0x6F, // 9
+    0x3F, // A
+    0x7A, // B
+    0x53, // C
+    0x7C, // D
+    0x5B, // E
+    0x1B, // F
+  };
+
+
+  const int16_t size = 256 * 8;
+  const Vector2 dots[] = 
+  {
+    // 0---1
+    // |   |
+    // 2---3
+    // |   |
+    // 4---5
+    { x, y, },
+    { x + size, y, },
+    { x, y - size, },
+    { x + size, y - size, },
+    { x, y - 2 * size, },
+    { x + size, y - 2 * size, },
+  };
+
+  const uint8_t mask = bitmasks[num];
+  if(mask & 0x01) paint_line(dots[0].x, dots[0].y, dots[1].x, dots[1].y);
+  if(mask & 0x02) paint_line(dots[0].x, dots[0].y, dots[2].x, dots[2].y);
+  if(mask & 0x04) paint_line(dots[1].x, dots[1].y, dots[3].x, dots[3].y);
+  if(mask & 0x08) paint_line(dots[2].x, dots[2].y, dots[3].x, dots[3].y);
+  if(mask & 0x10) paint_line(dots[2].x, dots[2].y, dots[4].x, dots[4].y);
+  if(mask & 0x20) paint_line(dots[3].x, dots[3].y, dots[5].x, dots[5].y);
+  if(mask & 0x40) paint_line(dots[4].x, dots[4].y, dots[5].x, dots[5].y);
+}
+
+typedef struct 
+{
+  unsigned char value;
+  unsigned char left_char;
+  unsigned char right_char;
+} Score;
+
+void refresh_score(Score * score)
+{
+  score->left_char = score->value / 10;
+  score->right_char = score->value % 10;
+}
+
+void paint_score(int16_t x, int16_t y, Score const * score)
+{
+  paint_digit(x + 0,        y, score->left_char);
+  paint_digit(x + 12 * 256, y, score->right_char);
+}
+
 int main()
 {
   DDRA = 0x01;
@@ -168,11 +246,29 @@ int main()
     .angle = 0,
     .velocity = { 0, 0 }
   };
+  Player player2 = {
+    .position = { 0, 0 },
+    .angle = 0,
+    .velocity = { 0, 0 }
+  };
 
   bool fire_pressed = false;
+
+  unsigned int cunter = 0;
+
+  Score p1Score = { 0 };
+  Score p2Score = { 0 };
+
+  refresh_score(&p1Score);
+  refresh_score(&p2Score);
+
 	while(1)
 	{
     paint_player(&player1);
+    paint_player(&player2);
+
+    paint_score(-127 * 256, 126 * 256, &p1Score);
+    paint_score( 104 * 256, 126 * 256, &p2Score);
 
     for(size_t i = 0; i < NUM_SHOTS; i++)
     {
@@ -239,268 +335,3 @@ int main()
 
 	return 0;
 }
-
-
-
-
-
-
-int8_t const sine_lut[256] = 
-{
-  0,
-  3,
-  6,
-  9,
-  12,
-  16,
-  19,
-  22,
-  25,
-  28,
-  31,
-  34,
-  37,
-  40,
-  43,
-  46,
-  49,
-  51,
-  54,
-  57,
-  60,
-  63,
-  65,
-  68,
-  71,
-  73,
-  76,
-  78,
-  81,
-  83,
-  85,
-  88,
-  90,
-  92,
-  94,
-  96,
-  98,
-  100,
-  102,
-  104,
-  106,
-  107,
-  109,
-  111,
-  112,
-  113,
-  115,
-  116,
-  117,
-  118,
-  120,
-  121,
-  122,
-  122,
-  123,
-  124,
-  125,
-  125,
-  126,
-  126,
-  126,
-  127,
-  127,
-  127,
-  127,
-  127,
-  127,
-  127,
-  126,
-  126,
-  126,
-  125,
-  125,
-  124,
-  123,
-  122,
-  122,
-  121,
-  120,
-  118,
-  117,
-  116,
-  115,
-  113,
-  112,
-  111,
-  109,
-  107,
-  106,
-  104,
-  102,
-  100,
-  98,
-  96,
-  94,
-  92,
-  90,
-  88,
-  85,
-  83,
-  81,
-  78,
-  76,
-  73,
-  71,
-  68,
-  65,
-  63,
-  60,
-  57,
-  54,
-  51,
-  49,
-  46,
-  43,
-  40,
-  37,
-  34,
-  31,
-  28,
-  25,
-  22,
-  19,
-  16,
-  12,
-  9,
-  6,
-  3,
-  0,
-  -3,
-  -6,
-  -9,
-  -12,
-  -16,
-  -19,
-  -22,
-  -25,
-  -28,
-  -31,
-  -34,
-  -37,
-  -40,
-  -43,
-  -46,
-  -49,
-  -51,
-  -54,
-  -57,
-  -60,
-  -63,
-  -65,
-  -68,
-  -71,
-  -73,
-  -76,
-  -78,
-  -81,
-  -83,
-  -85,
-  -88,
-  -90,
-  -92,
-  -94,
-  -96,
-  -98,
-  -100,
-  -102,
-  -104,
-  -106,
-  -107,
-  -109,
-  -111,
-  -112,
-  -113,
-  -115,
-  -116,
-  -117,
-  -118,
-  -120,
-  -121,
-  -122,
-  -122,
-  -123,
-  -124,
-  -125,
-  -125,
-  -126,
-  -126,
-  -126,
-  -127,
-  -127,
-  -127,
-  -127,
-  -127,
-  -127,
-  -127,
-  -126,
-  -126,
-  -126,
-  -125,
-  -125,
-  -124,
-  -123,
-  -122,
-  -122,
-  -121,
-  -120,
-  -118,
-  -117,
-  -116,
-  -115,
-  -113,
-  -112,
-  -111,
-  -109,
-  -107,
-  -106,
-  -104,
-  -102,
-  -100,
-  -98,
-  -96,
-  -94,
-  -92,
-  -90,
-  -88,
-  -85,
-  -83,
-  -81,
-  -78,
-  -76,
-  -73,
-  -71,
-  -68,
-  -65,
-  -63,
-  -60,
-  -57,
-  -54,
-  -51,
-  -49,
-  -46,
-  -43,
-  -40,
-  -37,
-  -34,
-  -31,
-  -28,
-  -25,
-  -22,
-  -19,
-  -16,
-  -12,
-  -9,
-  -6,
-  -3,
-};
