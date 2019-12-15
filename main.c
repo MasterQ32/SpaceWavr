@@ -22,12 +22,15 @@ typedef struct
   uint8_t angle;
 
   Vector2 velocity;
+
+  bool fire_pressed;
 } Player;
 
 typedef struct {
   uint16_t alive;
   Vector2 position;
   Vector2 velocity;
+  Player * owner;
 } Shot;
 
 
@@ -86,10 +89,11 @@ void paint_line(int16_t x1, int16_t y1, int16_t x2, int16_t y2)
   move_cursor(x1, y1);
   set_beam(true);
 
-  for(int i = 0; i < 16; i++)
+  const int divs = 16;
+  for(int i = 0; i < divs; i++)
   {
-    int32_t x = i * (int32_t)(x2 - x1) / 16 + x1;
-    int32_t y = i * (int32_t)(y2 - y1) / 16 + y1;
+    int32_t x = i * (int32_t)(x2 - x1) / divs + x1;
+    int32_t y = i * (int32_t)(y2 - y1) / divs + y1;
 
     if(x > SHRT_MAX || y > SHRT_MAX)
       continue;
@@ -98,8 +102,6 @@ void paint_line(int16_t x1, int16_t y1, int16_t x2, int16_t y2)
       continue;
 
     move_cursor(x, y);
-
-//     _delay_us(1);
   }
 
   move_cursor(x2, y2);
@@ -111,7 +113,7 @@ void paint_linept(Vector2 from, Vector2 to)
   paint_line(from.x, from.y, to.x, to.y);
 }
 
-void paint_player(Player * player)
+void paint_player(Player const * player)
 {
   const int size_x = 8 * 256;
   const int size_y = 12 * 256;
@@ -138,10 +140,15 @@ void paint_player(Player * player)
   }
 }
 
-#define INPUT_LEFT  (1<<2)
-#define INPUT_RIGHT (1<<0)
-#define INPUT_ACCEL (1<<1)
-#define INPUT_FIRE  (1<<3)
+#define INPUT1_LEFT  (1<<6)
+#define INPUT1_RIGHT (1<<0)
+#define INPUT1_ACCEL (1<<4)
+#define INPUT1_FIRE  (1<<2)
+
+#define INPUT2_LEFT  (1<<7)
+#define INPUT2_RIGHT (1<<1)
+#define INPUT2_ACCEL (1<<5)
+#define INPUT2_FIRE  (1<<3)
 
 bool is_input_pressed(uint8_t mask)
 {
@@ -233,42 +240,147 @@ void paint_score(int16_t x, int16_t y, Score const * score)
   paint_digit(x + 12 * 256, y, score->right_char);
 }
 
-int main()
+enum { LEFT, RIGHT, FIRE, ACCELERATE };
+static void update_player(Player * player, uint8_t const inputs[])
 {
-  DDRA = 0x01;
-	DDRB = 0xFF;
-	DDRC = 0xFF;
-  DDRD = 0x00;
-  PORTD = 0x0F; // 4 bit pullup
+  if(is_input_pressed(inputs[ACCELERATE])) {
+    Vector2 delta = direction_for_angle(player->angle);
 
-  Player player1 = {
-    .position = { 0, 0 },
-    .angle = 0,
-    .velocity = { 0, 0 }
-  };
-  Player player2 = {
-    .position = { 0, 0 },
-    .angle = 0,
-    .velocity = { 0, 0 }
-  };
+    const int dx = delta.x / 32;
+    const int dy = delta.y / 32;
 
-  bool fire_pressed = false;
+    if(abs(player->velocity.x + dx) < 512)
+      player->velocity.x += dx;
+    if(abs(player->velocity.y + dy) < 512)
+      player->velocity.y += dy;
 
-  unsigned int cunter = 0;
+  } else {
+    if(player->velocity.x > 0)
+      player->velocity.x -= 1;
+    else if(player->velocity.x < 0)
+      player->velocity.x += 1;
+    if(player->velocity.y > 0)
+      player->velocity.y -= 1;
+    else if(player->velocity.y < 0)
+      player->velocity.y += 1;
+  }
+
+  if(is_input_pressed(inputs[LEFT])) {
+    player->angle -= 1;
+  }
+
+  if(is_input_pressed(inputs[RIGHT])) {
+    player->angle += 1;
+  }
+
+  if(is_input_pressed(inputs[FIRE])) {
+    if(!player->fire_pressed) {
+      Shot * shot = alloc_shot();
+      if(shot != NULL) {
+        shot->position = player->position;
+        shot->velocity = direction_for_angle(player->angle);
+        shot->velocity.x *= 2;
+        shot->velocity.y *= 2;
+        shot->alive = 256; // 1000 frames alive
+        shot->owner = player;
+      }
+    }
+    player->fire_pressed = true;
+  } else {
+    player->fire_pressed = false;
+  }
+
+  player->position.x += player->velocity.x;
+  player->position.y += player->velocity.y;
+}
+
 
   Score p1Score = { 0 };
   Score p2Score = { 0 };
 
-  refresh_score(&p1Score);
-  refresh_score(&p2Score);
+Player player1, player2;
+
+static bool collider_test(int x0, int y0, int r0, int x1, int y1, int r1)
+{
+  int32_t dx = (int32_t)x0 - (int32_t)x1;
+  int32_t dy = (int32_t)y0 - (int32_t)y1;
+  int16_t r = r0 + r1;
+  if(dx < 0) dx = -dx;
+  if(dy < 0) dy = -dy;
+  return (dx <= r) && (dy <= r);
+}
+
+static void paint_playfield()
+{
+  paint_player(&player1);
+  paint_player(&player2);
+
+  paint_score( 104 * 256, 126 * 256, &p1Score);
+  paint_score(-127 * 256, 126 * 256, &p2Score);
+
+  for(size_t i = 0; i < NUM_SHOTS; i++)
+  {
+    if(shots[i].alive)
+    paint_point(shots[i].position.x, shots[i].position.y);
+  }
+}
+
+static void explosions(int mask)
+{
+  for(int i = 0; i < 500; i++)
+  {
+    paint_playfield();
+
+    if(mask & 1)
+    {
+      paint_line(
+        player1.position.x + (rand() % 0x1FFF) - 0x1000,
+        player1.position.y + (rand() % 0x1FFF) - 0x1000,
+        player1.position.x + (rand() % 0x1FFF) - 0x1000,
+        player1.position.y + (rand() % 0x1FFF) - 0x1000
+      );
+    }
+
+    if(mask & 2)
+    {
+      paint_line(
+        player2.position.x + (rand() % 0x1FFF) - 0x1000,
+        player2.position.y + (rand() % 0x1FFF) - 0x1000,
+        player2.position.x + (rand() % 0x1FFF) - 0x1000,
+        player2.position.y + (rand() % 0x1FFF) - 0x1000
+      );
+    }
+  }
+}
+
+static int run_game()
+{
+  player1 =(Player) {
+    .position = { -rand(), 2 * rand() },
+    .angle = 64,
+    .velocity = { 0, 0 },
+    .fire_pressed = false,
+  };
+  player2 = (Player) {
+    .position = { rand(), 2 * rand() },
+    .angle = -64,
+    .velocity = { 0, 0 },
+    .fire_pressed = false,
+  };
+  for(size_t i = 0; i < NUM_SHOTS; i++)
+  {
+    shots[i].alive = 0;
+  }
 
 	while(1)
 	{
-    paint_player(&player1);
-    paint_player(&player2);
+    paint_playfield();
 
-    paint_score(-127 * 256, 126 * 256, &p1Score);
-    paint_score( 104 * 256, 126 * 256, &p2Score);
+    if(collider_test(player1.position.x, player1.position.y, 8*256, player2.position.x, player2.position.y, 8*256))
+    {
+      explosions(3);
+      return 0;
+    }
 
     for(size_t i = 0; i < NUM_SHOTS; i++)
     {
@@ -277,61 +389,70 @@ int main()
         shots[i].position.x += shots[i].velocity.x;
         shots[i].position.y += shots[i].velocity.y;
 
-        paint_point(shots[i].position.x, shots[i].position.y);
+        Player const * target;
+        if(shots[i].owner == &player1)
+          target = &player2;
+        else
+          target = &player1;
 
         shots[i].alive -= 1;
-      }
-    }
-
-    if(is_input_pressed(INPUT_ACCEL)) {
-      Vector2 delta = direction_for_angle(player1.angle);
-
-      const int dx = delta.x / 32;
-      const int dy = delta.y / 32;
-
-      if(abs(player1.velocity.x + dx) < 512)
-        player1.velocity.x += dx;
-      if(abs(player1.velocity.y + dy) < 512)
-        player1.velocity.y += dy;
-
-    } else {
-      if(player1.velocity.x > 0)
-        player1.velocity.x -= 1;
-      else if(player1.velocity.x < 0)
-        player1.velocity.x += 1;
-      if(player1.velocity.y > 0)
-        player1.velocity.y -= 1;
-      else if(player1.velocity.y < 0)
-        player1.velocity.y += 1;
-    }
-
-    if(is_input_pressed(INPUT_LEFT)) {
-      player1.angle -= 1;
-    }
-
-    if(is_input_pressed(INPUT_RIGHT)) {
-      player1.angle += 1;
-    }
-
-    if(is_input_pressed(INPUT_FIRE)) {
-      if(!fire_pressed) {
-        Shot * shot = alloc_shot();
-        if(shot != NULL) {
-          shot->position = player1.position;
-          shot->velocity = direction_for_angle(player1.angle);
-          shot->velocity.x *= 2;
-          shot->velocity.y *= 2;
-          shot->alive = 256; // 1000 frames alive
+        
+        if(collider_test(shots[i].position.x, shots[i].position.y, 256, target->position.x, target->position.y, 11 * 256))
+        {
+          if(target == &player1) {
+            explosions(1);
+            return 1;
+          }
+          if(target == &player2){
+            explosions(2);
+            return 2;
+          }
         }
       }
-      fire_pressed = true;
-    } else {
-      fire_pressed = false;
     }
 
-    player1.position.x += player1.velocity.x;
-    player1.position.y += player1.velocity.y;
+    update_player(&player1, (uint8_t[]) {
+      INPUT1_LEFT,
+      INPUT1_RIGHT,
+      INPUT1_FIRE,
+      INPUT1_ACCEL
+    });
+
+    update_player(&player2, (uint8_t[]) {
+      INPUT2_LEFT,
+      INPUT2_RIGHT,
+      INPUT2_FIRE,
+      INPUT2_ACCEL
+    });
+
 	}
+} 
+
+int main()
+{
+  DDRA = 0x01;
+	DDRB = 0xFF;
+	DDRC = 0xFF;
+  DDRD = 0x00;
+  PORTD = 0xFF; // all input = pullup
+
+  refresh_score(&p1Score);
+  refresh_score(&p2Score);
+
+  while(1)
+  {
+    switch(run_game())
+    {
+      case 1: 
+        p1Score.value += 1;
+        refresh_score(&p1Score);
+        break;
+      case 2: 
+        p2Score.value += 1;
+        refresh_score(&p2Score);
+        break;
+    }
+  }
 
 	return 0;
 }
