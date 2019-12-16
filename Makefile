@@ -10,7 +10,7 @@ LFLAGS=$(FLAGS)
 all: main.elf
 
 flash: main.hex
-	avrdude -B 4MHz -P /dev/ttyUSB0 -p m32 -c stk500v2 -e -U flash:w:$<
+	avrdude -B 8MHz -P /dev/ttyUSB0 -p m32 -c stk500v2 -e -U flash:w:$<
 
 clean: $(wildcard *.o)
 	rm $^

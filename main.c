@@ -71,7 +71,7 @@ void set_beam(bool on)
 void move_cursor(int16_t x, int16_t y)
 {
   PORTB = 128 + x / 256;
-  PORTC = 128 + y / 256;
+  PORTD = 128 + y / 256;
 }
 
 void paint_point(int16_t x, int16_t y)
@@ -141,18 +141,18 @@ void paint_player(Player const * player)
 }
 
 #define INPUT1_LEFT  (1<<6)
-#define INPUT1_RIGHT (1<<0)
-#define INPUT1_ACCEL (1<<4)
-#define INPUT1_FIRE  (1<<2)
+#define INPUT1_RIGHT (1<<7)
+#define INPUT1_ACCEL (1<<5)
+#define INPUT1_FIRE  (1<<4)
 
-#define INPUT2_LEFT  (1<<7)
-#define INPUT2_RIGHT (1<<1)
-#define INPUT2_ACCEL (1<<5)
-#define INPUT2_FIRE  (1<<3)
+#define INPUT2_LEFT  (1<<2)
+#define INPUT2_RIGHT (1<<3)
+#define INPUT2_ACCEL (1<<1)
+#define INPUT2_FIRE  (1<<0)
 
 bool is_input_pressed(uint8_t mask)
 {
-  return (PIND & mask) == 0;
+  return (PINC & mask) == 0;
 }
 
 Vector2 direction_for_angle(uint8_t angle)
@@ -327,7 +327,7 @@ static void paint_playfield()
 
 static void explosions(int mask)
 {
-  for(int i = 0; i < 500; i++)
+  for(int i = 0; i < 400; i++)
   {
     paint_playfield();
 
@@ -430,11 +430,11 @@ static int run_game()
 
 int main()
 {
-  DDRA = 0x01;
+  DDRA = 0x01; 
 	DDRB = 0xFF;
-	DDRC = 0xFF;
-  DDRD = 0x00;
-  PORTD = 0xFF; // all input = pullup
+	DDRC = 0x00;
+  DDRD = 0xFF;
+  PORTC = 0xFF; // all input = pullup
 
   refresh_score(&p1Score);
   refresh_score(&p2Score);
